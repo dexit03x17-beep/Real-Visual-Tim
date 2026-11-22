@@ -20,7 +20,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.12'
+          gradle-version: '9.2.1'
 
       - name: Unpack and Build JAR
         run: |
@@ -42,8 +42,8 @@ jobs:
               with urllib.request.urlopen(req, timeout=20) as r:
                   return r.read().decode("utf-8")
 
-          # 1. Актуальный Fabric API для 1.21.11 с Modrinth
-          api_ver = None
+          # 1. Актуальный Fabric API для 1.21.11
+          api_ver = "0.141.6+1.21.11"
           try:
               data = json.loads(fetch('https://api.modrinth.com/v2/project/fabric-api/version?game_versions=%5B%221.21.11%22%5D&loaders=%5B%22fabric%22%5D'))
               if data:
@@ -51,56 +51,40 @@ jobs:
           except Exception as e:
               print("Modrinth check failed:", e)
 
-          # Запасной поиск через Maven Fabric
-          if not api_ver:
-              xml = fetch("https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/maven-metadata.xml")
-              matches = re.findall(r"<version>([^<]*1\.21\.11[^<]*)</version>", xml)
-              if matches:
-                  api_ver = matches[-1]
-              else:
-                  all_vers = re.findall(r"<version>([^<]+)</version>", xml)
-                  print("Latest Fabric API versions on Maven:", all_vers[-10:])
-
           # 2. Актуальный Fabric Loader
-          loader_ver = None
+          loader_ver = "0.18.4"
           try:
               loaders = json.loads(fetch("https://meta.fabricmc.net/v2/versions/loader"))
               loader_ver = loaders[0]["version"]
           except Exception as e:
               print("Loader check failed:", e)
 
-          # 3. Актуальный Fabric Loom
-          loom_ver = None
+          # 3. Стабильный Fabric Loom (без alpha/beta, совместимый с Gradle 9.2.1 и 1.21.11)
+          loom_ver = "1.14-SNAPSHOT"
           try:
               xml = fetch("https://maven.fabricmc.net/fabric-loom/fabric-loom.gradle.plugin/maven-metadata.xml")
-              m = re.search(r"<release>([^<]+)</release>", xml)
-              if m:
-                  loom_ver = m.group(1)
+              stable = re.findall(r"<version>(1\.1[345]\.\d+)</version>", xml)
+              if stable:
+                  loom_ver = stable[-1]
           except Exception as e:
               print("Loom check failed:", e)
 
-          print("Detected Fabric API:", api_ver)
-          print("Detected Fabric Loader:", loader_ver)
-          print("Detected Fabric Loom:", loom_ver)
+          print("Using Fabric API:", api_ver)
+          print("Using Fabric Loader:", loader_ver)
+          print("Using Fabric Loom:", loom_ver)
 
           with open("gradle.properties", "r", encoding="utf-8") as f:
               props = f.read()
-          if api_ver:
-              props = re.sub(r"(?m)^fabric_version=.*$", f"fabric_version={api_ver}", props)
-          if loader_ver:
-              props = re.sub(r"(?m)^loader_version=.*$", f"loader_version={loader_ver}", props)
+          props = re.sub(r"(?m)^fabric_version=.*$", f"fabric_version={api_ver}", props)
+          props = re.sub(r"(?m)^loader_version=.*$", f"loader_version={loader_ver}", props)
           with open("gradle.properties", "w", encoding="utf-8") as f:
               f.write(props)
 
-          if loom_ver:
-              with open("build.gradle", "r", encoding="utf-8") as f:
-                  bg = f.read()
-              bg = re.sub(r"id 'fabric-loom' version '[^']+'", f"id 'fabric-loom' version '{loom_ver}'", bg)
-              with open("build.gradle", "w", encoding="utf-8") as f:
-                  f.write(bg)
-
-          print("--- gradle.properties ---")
-          print(props)
+          with open("build.gradle", "r", encoding="utf-8") as f:
+              bg = f.read()
+          bg = re.sub(r"id 'fabric-loom' version '[^']+'", f"id 'fabric-loom' version '{loom_ver}'", bg)
+          with open("build.gradle", "w", encoding="utf-8") as f:
+              f.write(bg)
           EOF
 
           gradle build --no-daemon
